@@ -1,0 +1,73 @@
+---
+- name: play
+  hosts: all
+  become: false
+  gather_facts: false
+  tasks:
+    - name: clone git repo
+      git:
+        repo: "https://github.com/dannmandb/ansible.git"
+        dest: "{{ lookup('env', 'HOME') }}/ansible"
+        version: main
+
+- hosts: all
+  become: true
+  pre_tasks: 
+
+  - name: update & upgrade repository index
+    register: updatesys
+    apt:
+      update_cache: yes
+      upgrade: dist
+      cache_valid_time: 3600
+
+  - name: Display the last line of the previous task to check stats
+    debug:
+      msg: "{{updatesys.stdout_lines|last}}"
+
+- hosts:
+    - localhost
+  become: true
+  tasks:
+
+  - name: install packages for test_servers
+    apt:
+      name:
+        - docker
+        - docker-compose
+        - python3
+        - python3-pip
+      state: latest
+
+  - name: Creates directory
+    file:
+      path: "{{ item }}"
+      state: directory
+      owner: vagrant
+      group: vagrant
+      mode: 0775
+      recurse: yes
+    with_items:
+      - /opt/appdata/docker/sys/test
+      - /opt/appdata/docker/lab/test
+      - /srv/www
+      - ~/docker/test/nginx
+
+  - name: Ensure docker-compose.yml file.
+    template:
+      src: ~/ansible/nginx/downloader/docker-compose.yml
+      dest: "~/docker/test/nginx/"
+      group: docker
+      mode: 0644
+      backup: yes
+      lstrip_blocks: yes
+      trim_blocks: yes
+
+  - name: Ensure containers defined in compose file.
+    docker_compose:
+      project_src: "~/docker/test/nginx"
+      project_name: "define docker-compose"
+      pull: "true"
+      state: "present"
+      remove_orphans: "true"
+    when: not ansible_check_mode
